@@ -114,7 +114,7 @@ If you want to find the best setting to get an atlas for deflickering, we provid
 
 3. [Downsample rate](https://github.com/ChenyangLEI/All-In-One-Deflicker/blob/53bf1d65e71bde2866d287e2b5e59ac0431c5a15/src/stage1_neural_atlas.py#L265): We find that downsampling the resolution of the neural atlas by ``4`` times make the convergence much faster and slightly influences the quality. You can choose your own downsample rate.
 
-4. [Maximum number of frames](https://github.com/ChenyangLEI/All-In-One-Deflicker/blob/53bf1d65e71bde2866d287e2b5e59ac0431c5a15/src/config/config_flow_100.json#L3): We set the ``maximum_number_of_frames`` to 200. The performance for longer videos is not evaluated. It is recommended to split long videos into several shorter sequences. 
+4. [Maximum number of frames](https://github.com/ChenyangLEI/All-In-One-Deflicker/blob/53bf1d65e71bde2866d287e2b5e59ac0431c5a15/src/config/config_flow_100.json#L3): We set the ``maximum_number_of_frames`` to 500. The performance for longer videos is not evaluated. It is recommended to split long videos into several shorter sequences. 
 
 5. Useness of segmentation masks: Perfect segmentation masks will increase the quality of the neural atlas, especially for objects with significant motion. However, in most cases, the improvement brought by segmentation on the final prediction is not significant since neural filtering can filter the flaws in the atlas. For now, we provide a naive version for segmentation masks support above.
 

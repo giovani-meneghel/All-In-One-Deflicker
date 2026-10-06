@@ -1,6 +1,6 @@
 {
     "results_folder_name": "results",
-    "maximum_number_of_frames": 200,
+    "maximum_number_of_frames": 500,
     "resx": 768,
     "resy": 432,
     "iters_num": 10001,

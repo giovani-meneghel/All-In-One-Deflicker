@@ -38,7 +38,7 @@ def resize_flow(flow, newh, neww):
     return flow
 
 def load_input_data(resy, resx, maximum_number_of_frames, data_folder, use_mask_rcnn_bootstrapping,  filter_optical_flow,
-                    vid_root, vid_name):
+                    vid_root, vid_name, ignore_start=0, ignore_end=0):
     out_flow_dir = vid_root / f'{vid_name}_flow'
     maskrcnn_dir = vid_root / f'{vid_name}_seg'
 
@@ -59,6 +59,8 @@ def load_input_data(resy, resx, maximum_number_of_frames, data_folder, use_mask_
 
     mask_files = sorted(list(maskrcnn_dir.glob('*.jpg')) + list(maskrcnn_dir.glob('*.png')))
     for i in range(number_of_frames):
+        if i < ignore_start or i >= number_of_frames - ignore_end:
+            continue
         file1 = input_files[i]
         im = np.array(Image.open(str(file1))).astype(np.float64) / 255.
         # xuanchi add
@@ -73,6 +75,8 @@ def load_input_data(resy, resx, maximum_number_of_frames, data_folder, use_mask_
         video_frames_dx[:, :-1, :, i] = video_frames[:, 1:, :, i] - video_frames[:, :-1, :, i]
 
     for i in range(number_of_frames - 1):
+        if i < ignore_start or i >= (number_of_frames - 1 - ignore_end):
+            continue
         file1 = input_files[i]
         j = i + 1
         file2 = input_files[j]
@@ -103,7 +107,7 @@ def load_input_data(resy, resx, maximum_number_of_frames, data_folder, use_mask_
     return optical_flows_mask, video_frames, optical_flows_reverse_mask, mask_frames, video_frames_dx, video_frames_dy, optical_flows_reverse, optical_flows
 
 def load_input_data_single(resy, resx, maximum_number_of_frames, data_folder, use_mask_rcnn_bootstrapping,  filter_optical_flow,
-                    vid_root, vid_name):
+                    vid_root, vid_name, ignore_start=0, ignore_end=0):
     out_flow_dir = vid_root / f'{vid_name}_flow'
     maskrcnn_dir = vid_root / f'{vid_name}_maskrcnn'
 
@@ -123,6 +127,8 @@ def load_input_data_single(resy, resx, maximum_number_of_frames, data_folder, us
 
 
     for i in range(number_of_frames):
+        if i < ignore_start or i >= number_of_frames - ignore_end:
+            continue
         file1 = input_files[i]
         im = np.array(Image.open(str(file1))).astype(np.float64) / 255.
         # xuanchi add
@@ -133,6 +139,8 @@ def load_input_data_single(resy, resx, maximum_number_of_frames, data_folder, us
         video_frames_dx[:, :-1, :, i] = video_frames[:, 1:, :, i] - video_frames[:, :-1, :, i]
 
     for i in range(number_of_frames - 1):
+        if i < ignore_start or i >= (number_of_frames - 1 - ignore_end):
+            continue
         file1 = input_files[i]
         j = i + 1
         file2 = input_files[j]
@@ -163,10 +171,10 @@ def load_input_data_single(resy, resx, maximum_number_of_frames, data_folder, us
     return optical_flows_mask, video_frames, optical_flows_reverse_mask, mask_frames, video_frames_dx, video_frames_dy, optical_flows_reverse, optical_flows
 
 
-def get_tuples(number_of_frames, video_frames):
+def get_tuples(number_of_frames, video_frames, ignore_start=0, ignore_end=0):
     # video_frames shape: (resy, resx, 3, num_frames), mask_frames shape: (resy, resx, num_frames)
     jif_all = []
-    for f in range(number_of_frames):
+    for f in range(ignore_start, number_of_frames - ignore_end):
         mask = (video_frames[:, :, :, f] > -1).any(dim=2)
         relis, reljs = torch.where(mask > 0.5)
         jif_all.append(torch.stack((reljs, relis, f * torch.ones_like(reljs))))
@@ -201,7 +209,7 @@ def save_mask_flow(optical_flows_mask, video_frames, results_folder):
     for j in range(optical_flows_mask.shape[3]):
 
         filter_flow_0 = imageio.get_writer(
-            "%s/filter_flow_%d.mp4" % (results_folder, j), fps=10)
+            "%s/filter_flow_%d.mp4" % (results_folder, j), fps=10, macro_block_size=1)
         for i in range(video_frames.shape[3]):
             if torch.where(optical_flows_mask[:, :, i, j] == 1)[0].shape[0] == 0:
                 continue
@@ -222,7 +230,7 @@ def save_mask_flow(optical_flows_mask, video_frames, results_folder):
         filter_flow_0.close()
     # save the video in the working resolution
     input_video = imageio.get_writer(
-        "%s/input_video.mp4" % (results_folder), fps=10)
+        "%s/input_video.mp4" % (results_folder), fps=10, macro_block_size=1)
     for i in range(video_frames.shape[3]):
         cur_frame = video_frames[:, :, :, i].clone()
 

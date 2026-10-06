@@ -110,7 +110,7 @@ def get_high_res_texture(resolution, minx, maxx, miny, maxy, model_F_atlas,devic
                         'abcdefghijlmnopqrstuvwxyz1234567890!@#$%^&*()-+=>', (10, ii),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.2, cur_color, 2, cv2.LINE_AA)
             cv2.putText(reconstruction_texture2.numpy(),
-                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ?~;:<./\|][{},', (10, ii + 40),
+                        r'ABCDEFGHIJKLMNOPQRSTUVWXYZ?~;:<./\|][{},', (10, ii + 40),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.1, cur_color, 2, cv2.LINE_AA)
 
         for ii in range(40, 500, 80):
@@ -119,7 +119,7 @@ def get_high_res_texture(resolution, minx, maxx, miny, maxy, model_F_atlas,devic
                         'abcdefghijlmnopqrstuvwxyz1234567890!@#$%^&*()-+=>', (10, ii + 500),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.2, cur_color, 2, cv2.LINE_AA)
             cv2.putText(reconstruction_texture2.numpy(),
-                        'ABCDEFGHIJKLMNOPQRSTUVWXYZ?~;:<./\|][{},',
+                        r'ABCDEFGHIJKLMNOPQRSTUVWXYZ?~;:<./\|][{},',
                         (10, ii + 40 + 500), cv2.FONT_HERSHEY_SIMPLEX, 1.1, cur_color, 2,
                         cv2.LINE_AA)
 
@@ -204,7 +204,7 @@ def evaluate_model(model_F_atlas, resx, resy, number_of_frames, model_F_mapping1
                    video_frames,
                    results_folder, iteration, mask_frames, optimizer_all, writer, vid_name, derivative_amount,
                    uv_mapping_scale, optical_flows, optical_flows_mask, device,
-                   save_checkpoint=True, show_atlas_alpha=False):  #
+                   save_checkpoint=True, show_atlas_alpha=False, ignore_start=0, ignore_end=0):  #
 
     os.makedirs(os.path.join(results_folder, '%06d' % iteration), exist_ok = True)
     os.makedirs(os.path.join(results_folder, "output"), exist_ok = True)
@@ -292,6 +292,9 @@ def evaluate_model(model_F_atlas, resx, resy, number_of_frames, model_F_mapping1
 
     with torch.no_grad():
         for f in range(number_of_frames):
+            if f < ignore_start or f >= number_of_frames - ignore_end:
+                video_frames_reconstruction[:, :, :, f] = video_frames[:, :, :, f].cpu().numpy()
+                continue
             print(f)
 
             relis_i, reljs_i = torch.where(torch.ones(resy, resx) > 0)
@@ -501,51 +504,53 @@ def evaluate_model(model_F_atlas, resx, resy, number_of_frames, model_F_mapping1
                  (masks2[:, :, np.newaxis] * texture_orig2.numpy() * (255)).astype(np.uint8))
 
     writer_t_edited1 = imageio.get_writer(
-        "%s/edited1_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/edited1_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
     writer_t_edited1_tex = imageio.get_writer(
-        "%s/edited1_tex_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/edited1_tex_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
     writer_t_edited2_tex = imageio.get_writer(
-        "%s/edited2_tex_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/edited2_tex_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_t_edited2 = imageio.get_writer(
-        "%s/edited2_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/edited2_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
     writer_alpha = imageio.get_writer(
-        "%s/alpha_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/alpha_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_im_rec = imageio.get_writer(
-        "%s/reconstruction_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/reconstruction_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_residuals = imageio.get_writer(
-        "%s/residuals_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/residuals_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_alpha_vs_mask_rcnn = imageio.get_writer(
-        "%s/alpha_vs_mask_rcnn_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/alpha_vs_mask_rcnn_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_edit = imageio.get_writer(
-        "%s/edit_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/edit_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_uv_1 = imageio.get_writer(
         "%s/uv_1_%s.mp4" % (evaluation_folder, vid_name),
-        fps=10)
+        fps=10, macro_block_size=1)
 
     writer_uv_1_masked = imageio.get_writer(
         "%s/uv_1_masked_%s.mp4" % (evaluation_folder, vid_name),
-        fps=10)
+        fps=10, macro_block_size=1)
 
     writer_uv_2 = imageio.get_writer(
         "%s/uv_2_%s.mp4" % (evaluation_folder, vid_name),
-        fps=10)
+        fps=10, macro_block_size=1)
 
     writer_global_info = imageio.get_writer(
-        "%s/global_info_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/global_info_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     pnsrs = np.zeros((number_of_frames, 1))
     # save evaluation videos:
+    output_dir = os.path.join(results_folder, 'output')
+    os.makedirs(output_dir, exist_ok=True)
     for i in range(number_of_frames):
         print(i)
         # save image
-        svae_image_path = os.path.join(results_folder, 'output', '%05d.png' % i)
-        imageio.imwrite(svae_image_path, (video_frames_reconstruction[:, :, :, i] * (255)).astype(np.uint8))
+        save_image_path = os.path.join(output_dir, '%05d.png' % i)
+        imageio.imwrite(save_image_path, (video_frames_reconstruction[:, :, :, i] * (255)).astype(np.uint8))
 
         writer_alpha.append_data((alpha_reconstruction[:, :, i] * (255)).astype(np.uint8))
         alpha_vs_mask_rcnn_cur = np.transpose(np.stack(
@@ -605,7 +610,7 @@ def evaluate_model(model_F_atlas, resx, resy, number_of_frames, model_F_mapping1
 def evaluate_model_single(model_F_atlas, resx, resy, number_of_frames, model_F_mapping1,video_frames,
                    results_folder, iteration, mask_frames, optimizer_all, writer, vid_name, derivative_amount,
                    uv_mapping_scale, optical_flows, optical_flows_mask, device,
-                   save_checkpoint=True, show_atlas_alpha=False):  #
+                   save_checkpoint=True, show_atlas_alpha=False, ignore_start=0, ignore_end=0):  #
 
     os.makedirs(os.path.join(results_folder, '%06d' % iteration), exist_ok = True)
     os.makedirs(os.path.join(results_folder, "output"), exist_ok = True)
@@ -639,6 +644,9 @@ def evaluate_model_single(model_F_atlas, resx, resy, number_of_frames, model_F_m
 
     with torch.no_grad():
         for f in range(number_of_frames):
+            if f < ignore_start or f >= number_of_frames - ignore_end:
+                video_frames_reconstruction[:, :, :, f] = video_frames[:, :, :, f].cpu().numpy()
+                continue
             print(f)
 
             relis_i, reljs_i = torch.where(torch.ones(resy, resx) > 0)
@@ -712,25 +720,27 @@ def evaluate_model_single(model_F_atlas, resx, resy, number_of_frames, model_F_m
     Path(evaluation_folder).mkdir(parents=True, exist_ok=True)
 
     writer_im_rec = imageio.get_writer(
-        "%s/reconstruction_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/reconstruction_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_residuals = imageio.get_writer(
-        "%s/residuals_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/residuals_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     writer_uv_1 = imageio.get_writer(
         "%s/uv_1_%s.mp4" % (evaluation_folder, vid_name),
-        fps=10)
+        fps=10, macro_block_size=1)
 
     writer_global_info = imageio.get_writer(
-        "%s/global_info_%s.mp4" % (evaluation_folder, vid_name), fps=10)
+        "%s/global_info_%s.mp4" % (evaluation_folder, vid_name), fps=10, macro_block_size=1)
 
     pnsrs = np.zeros((number_of_frames, 1))
     # save evaluation videos:
+    output_dir = os.path.join(results_folder, 'output')
+    os.makedirs(output_dir, exist_ok=True)
     for i in range(number_of_frames):
         print(i)
         # save image
-        svae_image_path = os.path.join(results_folder, 'output', '%05d.png' % i)
-        imageio.imwrite(svae_image_path, (video_frames_reconstruction[:, :, :, i] * (255)).astype(np.uint8))
+        save_image_path = os.path.join(output_dir, '%05d.png' % i)
+        imageio.imwrite(save_image_path, (video_frames_reconstruction[:, :, :, i] * (255)).astype(np.uint8))
         
         writer_im_rec.append_data((video_frames_reconstruction[:, :, :, i] * (255)).astype(np.uint8))
         writer_residuals.append_data(((rgb_residual_video[:, :, :, i] + 0.5) * 255).astype(np.uint8))

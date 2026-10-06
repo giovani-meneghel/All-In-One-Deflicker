@@ -12,17 +12,19 @@ try:
 except:
     from src.models.stage_1.core.utils.utils import bilinear_sampler, coords_grid, upflow8
 
-try:
-    autocast = torch.cuda.amp.autocast
-except:
-    # dummy autocast for PyTorch < 1.6
-    class autocast:
-        def __init__(self, enabled):
-            pass
-        def __enter__(self):
-            pass
-        def __exit__(self, *args):
-            pass
+def autocast(enabled=True):
+    if hasattr(torch, 'amp') and hasattr(torch.amp, 'autocast'):
+        return torch.amp.autocast('cuda', enabled=enabled)
+    elif hasattr(torch, 'cuda') and hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'autocast'):
+        return torch.cuda.amp.autocast(enabled=enabled)
+    else:
+        # dummy autocast for very old PyTorch
+        class dummy_autocast:
+            def __init__(self, enabled): pass
+            def __enter__(self): pass
+            def __exit__(self, *args): pass
+        return dummy_autocast(enabled)
+
 
 
 class RAFT(nn.Module):

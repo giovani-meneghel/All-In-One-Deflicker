@@ -1,4 +1,11 @@
 import sys
+import os
+import subprocess
+
+# Anchor imports to AioDeflicker root regardless of CWD
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_AIO_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, '..'))
+sys.path.insert(0, _AIO_ROOT)
 import torch
 import torch.optim as optim
 import numpy as np
@@ -16,11 +23,15 @@ import json
 from pathlib import Path
 from datetime import datetime
 
-from torch.utils.tensorboard import SummaryWriter
+# No-op stub to avoid TensorBoard dependency
+class SummaryWriter:
+    def __init__(self, *args, **kwargs): pass
+    def add_scalar(self, *args, **kwargs): pass
+    def add_image(self, *args, **kwargs): pass
+    def close(self, *args, **kwargs): pass
 
 # set gpu
-import os
-import subprocess
+
 
 def main(config, args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,7 +122,7 @@ def main(config, args):
     vid_root = data_folder.parent
     
     results_folder = Path(
-        f'./{results_folder_name}/{vid_name}/stage_1')
+        os.path.join(args.results_root, vid_name, 'stage_1'))
 
     results_folder.mkdir(parents=True, exist_ok=True)
     with open('%s/config.json' % results_folder, 'w') as json_file:
@@ -119,7 +130,7 @@ def main(config, args):
     
     writer = SummaryWriter(log_dir=str(results_folder))
     optical_flows_mask, video_frames, optical_flows_reverse_mask, mask_frames, video_frames_dx, video_frames_dy, optical_flows_reverse, optical_flows = load_input_data(
-        resy, resx, maximum_number_of_frames, data_folder, True,  True, vid_root, vid_name)
+        resy, resx, maximum_number_of_frames, data_folder, True,  True, vid_root, vid_name, ignore_start=args.ignore_start, ignore_end=args.ignore_end)
     number_of_frames=video_frames.shape[3]
     # save a video showing the masked part of the forward optical flow:s
     save_mask_flow(optical_flows_mask, video_frames, results_folder)
@@ -185,10 +196,10 @@ def main(config, args):
         optimizer_all.load_state_dict(init_file["optimizer_all_state_dict"])
         start_iteration = init_file["iteration"]
 
-    jif_all = get_tuples(number_of_frames, video_frames)
+    jif_all = get_tuples(number_of_frames, video_frames, ignore_start=args.ignore_start, ignore_end=args.ignore_end)
 
     # Start training!
-    for i in tqdm(range(start_iteration, iters_num)):
+    for i in tqdm(range(start_iteration, iters_num), miniters=100, mininterval=0, maxinterval=float('inf')):
 
         if i > stop_bootstrapping_iteration:
             alpha_bootstrapping_factor = 0
@@ -321,7 +332,7 @@ def main(config, args):
                                        video_frames, results_folder, i, mask_frames, optimizer_all,
                                        writer, vid_name, derivative_amount, uv_mapping_scale,
                                        optical_flows,
-                                       optical_flows_mask,device)
+                                       optical_flows_mask,device, ignore_start=args.ignore_start, ignore_end=args.ignore_end)
 
             rgb_img = video_frames[:, :, :, 0].numpy()
             # writer.add_image('Input/rgb_0', rgb_img, i, dataformats='HWC')
@@ -337,33 +348,53 @@ if __name__ == "__main__":
     parser.add_argument('--vid_name', type=str, default="Around_the_world_in_1896_001")
     parser.add_argument('--root', type=str, default="data/test/")
     parser.add_argument('--down', type=int, default=1)
+    parser.add_argument('--iters', type=int, default=None)
     parser.add_argument('--gpu', type=str, default="0")
     parser.add_argument('--class_name', type=str, default="portrait")
+    parser.add_argument('--optical_flow_coeff', type=float, default=None)
+    parser.add_argument('--alpha_flow_factor', type=float, default=None)
+    parser.add_argument('--ignore_start', type=int, default=0)
+    parser.add_argument('--ignore_end', type=int, default=0)
+    parser.add_argument('--results_root', type=str, default=os.path.join(_AIO_ROOT, 'results'),
+                        help='Root directory for results output')
+    parser.add_argument('--weights_dir', type=str,
+                        default=os.path.join(_AIO_ROOT, 'pretrained_weights'),
+                        help='Directory containing pretrained weight files')
     args = parser.parse_args()
     
     # select_gpu = "1" # default use 0
     select_gpu = args.gpu
     os.environ["CUDA_VISIBLE_DEVICES"] = select_gpu
     
-    config_path = "src/config/%s" % args.config
+    config_path = os.path.join(_SCRIPT_DIR, 'config', args.config)
     vid_path = os.path.join(args.root, args.vid_name)
 
     args.vid_path = vid_path
     
     # get flow using current video
-    cmd = "python src/preprocess_optical_flow.py --vid-path %s --gpu %s " % (vid_path, select_gpu)
+    flow_script = os.path.join(_SCRIPT_DIR, 'preprocess_optical_flow.py')
+    cmd = "%s \"%s\" --vid-path %s --gpu %s --weights_dir \"%s\"" % (sys.executable, flow_script, vid_path, select_gpu, args.weights_dir)
     print(cmd)
-    subprocess.call(cmd, shell=True)
+    subprocess.call(cmd, shell=True, env=os.environ)
     
     # get mask using current video
     if args.class_name == "portrait":
-        cmd = "python src/preprocess_mask_portrait.py --vid-path %s --gpu %s " % (vid_path, select_gpu)
+        mask_script = os.path.join(_SCRIPT_DIR, 'preprocess_mask_portrait.py')
+        cmd = "%s \"%s\" --vid-path %s --gpu %s " % (sys.executable, mask_script, vid_path, select_gpu)
         print(cmd)
-        subprocess.call(cmd, shell=True)
+        subprocess.call(cmd, shell=True, env=os.environ)
     else:
-        cmd = "python src/preprocess_mask_rcnn.py --vid-path %s --class_name %s --gpu %s " % (vid_path, args.class_name, select_gpu)
+        mask_script = os.path.join(_SCRIPT_DIR, 'preprocess_mask_rcnn.py')
+        cmd = "%s \"%s\" --vid-path %s --class_name %s --gpu %s " % (sys.executable, mask_script, vid_path, args.class_name, select_gpu)
         print(cmd)
-        subprocess.call(cmd, shell=True)
-    
+        subprocess.call(cmd, shell=True, env=os.environ)
+
     with open(config_path) as f:
-        main(json.load(f), args)
+        config = json.load(f)
+        if args.iters is not None:
+            config["iters_num"] = args.iters
+        if args.optical_flow_coeff is not None:
+            config['optical_flow_coeff'] = args.optical_flow_coeff
+        if args.alpha_flow_factor is not None:
+            config['alpha_flow_factor'] = args.alpha_flow_factor
+        main(config, args)

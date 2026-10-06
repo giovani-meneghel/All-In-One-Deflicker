@@ -1,8 +1,13 @@
 import os
+import sys
+
+# Anchor imports to AioDeflicker root regardless of CWD
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_AIO_ROOT = os.path.normpath(os.path.join(_SCRIPT_DIR, '..'))
+sys.path.insert(0, _AIO_ROOT)
 import numpy as np
 from glob import glob
-import imageio 
-import subprocess
+import shutil
 import src.models.network_filter as net
 from src.models.utils import tensor2img, load_image, InputPadder
 import argparse
@@ -17,11 +22,19 @@ import src.models.utils as utils
 from easydict import EasyDict as edict
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--ckpt_filter", default="./pretrained_weights/neural_filter.pth",type=str, help="the ckpt of neural filter network")
-parser.add_argument("--ckpt_local", default="./pretrained_weights/local_refinement_net.pth", type=str, help="the ckpt of local refinement network")
-parser.add_argument("--fps", default=10, type=int, help="frame per second")
+parser.add_argument("--ckpt_filter", default=os.path.join(_AIO_ROOT, 'pretrained_weights', 'neural_filter.pth'),
+                    type=str, help="the ckpt of neural filter network")
+parser.add_argument("--ckpt_local", default=os.path.join(_AIO_ROOT, 'pretrained_weights', 'local_refinement_net.pth'),
+                    type=str, help="the ckpt of local refinement network")
+parser.add_argument("--fps", default=10, type=float, help="frame per second")
 parser.add_argument("--video_name", default=None, type=str, help="the name of input video")
 parser.add_argument('--gpu',             type=int,     default=0,                help='gpu device id')
+parser.add_argument('--ignore_start',    type=int,     default=0,                help='ignore frames at start')
+parser.add_argument('--ignore_end',      type=int,     default=0,                help='ignore frames at end')
+parser.add_argument('--data_root',       type=str,     default=os.path.join(_AIO_ROOT, 'data', 'test'),
+                    help='Root directory containing input frame folders')
+parser.add_argument('--results_root',    type=str,     default=os.path.join(_AIO_ROOT, 'results'),
+                    help='Root directory for results output')
 
 # set random seed
 seed = 2023
@@ -66,8 +79,8 @@ local_net = local_net.to(device)
 local_net.eval()
 
 
-style_root = "./results/{}/stage_1/output".format(opts.video_name)
-content_root = "./data/test/{}".format(opts.video_name)
+style_root = os.path.join(opts.results_root, opts.video_name, "stage_1", "output")
+content_root = os.path.join(opts.data_root, opts.video_name)
 style_names = sorted(glob(style_root + "/*"))
 content_names = sorted(glob(content_root + "/*"))
 assert len(style_names) == len(content_names), "the number of style frames is different from the number of content frames"
@@ -75,18 +88,28 @@ num_frames = len(style_names)
 print("Processing {} frames".format(num_frames))
 
 # setup folder
-output_folder = "./results/{}/neural_filter/concat".format(opts.video_name)
+output_folder = os.path.join(opts.results_root, opts.video_name, "neural_filter", "concat")
 os.makedirs(output_folder, exist_ok=True)
-process_filter_dir = "./results/{}/neural_filter/output".format(opts.video_name)
+process_filter_dir = os.path.join(opts.results_root, opts.video_name, "neural_filter", "output")
 os.makedirs(process_filter_dir, exist_ok=True)
-output_final_dir = os.path.join("results", opts.video_name, "final", "output")
+output_final_dir = os.path.join(opts.results_root, opts.video_name, "final", "output")
 os.makedirs(output_final_dir, exist_ok=True)
 
 print("neural filter dir:", process_filter_dir)
 print("output final dir:", output_final_dir)
 print("output dir:", output_folder) # concat output
 
-for frame_id in tqdm(range(num_frames)):
+first_processed_id = opts.ignore_start
+last_processed_id = num_frames - opts.ignore_end - 1
+
+for frame_id in tqdm(range(num_frames), miniters=10):
+    if frame_id < opts.ignore_start or frame_id > last_processed_id:
+        ### bypass processing
+        shutil.copy(content_names[frame_id], "{}/{:05d}.png".format(output_folder, frame_id))
+        shutil.copy(content_names[frame_id], "{}/{:05d}.png".format(process_filter_dir, frame_id))
+        shutil.copy(content_names[frame_id], "{}/{:05d}.png".format(output_final_dir, frame_id))
+        continue
+
     ### neural filter net
     frame_content, org_size = load_image(content_names[frame_id], device=device, resize=False)
     frame_style, _ = load_image(style_names[frame_id], size=org_size, device=device, resize=False)
@@ -96,7 +119,7 @@ for frame_id in tqdm(range(num_frames)):
     with torch.no_grad():
         frame_pred = filter_net(torch.cat([frame_content, frame_style], dim=1))
         ### local_net 
-        if frame_id == 0:
+        if frame_id == first_processed_id:
             frame_o1 = frame_pred
             frame_o2 = frame_pred
             frame_p1 = frame_pred
@@ -122,9 +145,9 @@ for frame_id in tqdm(range(num_frames)):
 
 
 # save video
-cmd =  "ffmpeg -y -r %s -i %s -crf 25 -r 12 -qscale 4  %s" % (str(opts.fps), os.path.join(output_folder, "%05d.png"), output_folder + ".mp4")
+cmd =  "ffmpeg -y -r %s -i %s -crf 16 -r %s -pix_fmt yuv420p %s" % (str(opts.fps), os.path.join(output_folder, "%05d.png"), str(opts.fps), output_folder + ".mp4")
 os.system(cmd) 
-cmd =  "ffmpeg -y -r %s -i %s -crf 25 -r 12 -qscale 4  %s" % (str(opts.fps), os.path.join(process_filter_dir, "%05d.png"), process_filter_dir + ".mp4")
+cmd =  "ffmpeg -y -r %s -i %s -crf 16 -r %s -pix_fmt yuv420p %s" % (str(opts.fps), os.path.join(process_filter_dir, "%05d.png"), str(opts.fps), process_filter_dir + ".mp4")
 os.system(cmd) 
-cmd =  "ffmpeg -y -r %s -i %s -crf 25 -r 12 -qscale 4  %s" % (str(opts.fps), os.path.join(output_final_dir, "%05d.png"), output_final_dir + ".mp4")
-os.system(cmd) 
+cmd =  "ffmpeg -y -r %s -i %s -crf 16 -r %s -pix_fmt yuv420p %s" % (str(opts.fps), os.path.join(output_final_dir, "%05d.png"), str(opts.fps), output_final_dir + ".mp4")
+os.system(cmd)
